@@ -1,0 +1,98 @@
+name: LineageOS A35x CI Build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+    # ─────────────────────────────
+    # SETUP BASICO
+    # ─────────────────────────────
+    - name: Install dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y git-core flex bison build-essential zip curl \
+        zlib1g-dev gcc-multilib g++-multilib libc6-dev-i386 \
+        lib32ncurses5-dev libx11-dev libgl1-mesa-dev \
+        python3 openjdk-17-jdk ccache repo
+
+    # ─────────────────────────────
+    # CONFIG REPO TOOL
+    # ─────────────────────────────
+    - name: Setup repo
+      run: |
+        mkdir -p ~/bin
+        curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+        chmod +x ~/bin/repo
+        echo "$HOME/bin" >> $GITHUB_PATH
+
+    # ─────────────────────────────
+    # INIT ROM
+    # ─────────────────────────────
+    - name: Init LineageOS
+      run: |
+        mkdir lineage
+        cd lineage
+        repo init -u https://github.com/LineageOS/android.git -b lineage-21.0
+
+    # ─────────────────────────────
+    # SYNC ROM
+    # ─────────────────────────────
+    - name: Sync source
+      run: |
+        cd lineage
+        repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags
+
+    # ─────────────────────────────
+    # DEVICE TREE
+    # ─────────────────────────────
+    - name: Device tree
+      run: |
+        cd lineage/device/samsung
+        git clone https://github.com/ExynosEnclave/android_device_samsung_a35x a35x
+
+    # ─────────────────────────────
+    # VENDOR (IMPORTANTE)
+    # ─────────────────────────────
+    - name: Vendor blobs
+      run: |
+        cd lineage
+        git clone https://TU_VENDOR_REPO vendor/samsung/a35x
+
+    # ─────────────────────────────
+    # KERNEL
+    # ─────────────────────────────
+    - name: Kernel
+      run: |
+        cd lineage
+        git clone https://TU_KERNEL_REPO kernel/samsung/a35x
+
+    # ─────────────────────────────
+    # CCACHE (ACELERA MUCHO)
+    # ─────────────────────────────
+    - name: Enable ccache
+      run: |
+        export USE_CCACHE=1
+        ccache -M 50G
+
+    # ─────────────────────────────
+    # BUILD ROM
+    # ─────────────────────────────
+    - name: Build ROM
+      run: |
+        cd lineage
+        source build/envsetup.sh
+        lunch lineage_a35x-userdebug
+        mka bacon -j$(nproc --all)
+
+    # ─────────────────────────────
+    # UPLOAD RESULTADO
+    # ─────────────────────────────
+    - name: Upload ROM
+      uses: actions/upload-artifact@v4
+      with:
+        name: lineage-a35x-rom
+        path: lineage/out/target/product/a35x/

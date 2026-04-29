@@ -8,6 +8,9 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
+    # ─────────────────────────────
+    # DEPENDENCIAS
+    # ─────────────────────────────
     - name: Install dependencies
       run: |
         sudo apt update
@@ -15,13 +18,40 @@ jobs:
         zlib1g-dev gcc-multilib g++-multilib libc6-dev-i386 \
         lib32ncurses5-dev libx11-dev libgl1-mesa-dev \
         python3 openjdk-17-jdk ccache repo
+        sudo apt clean
 
+    # ─────────────────────────────
+    # SETUP REPO TOOL
+    # ─────────────────────────────
     - name: Setup repo tool
       run: |
         mkdir -p ~/bin
         curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
         chmod +x ~/bin/repo
         echo "$HOME/bin" >> $GITHUB_PATH
+
+    # ─────────────────────────────
+    # LIBERAR ESPACIO (CLAVE 🔥)
+    # ─────────────────────────────
+    - name: Free disk space
+      run: |
+        echo "BEFORE CLEAN"
+        df -h
+
+        sudo rm -rf /usr/local/lib/android || true
+        sudo rm -rf /opt/hostedtoolcache || true
+        sudo rm -rf /usr/share/dotnet || true
+        sudo rm -rf /usr/local/share/boost || true
+
+        rm -rf ~/.gradle || true
+        rm -rf ~/.npm || true
+        rm -rf ~/.cache || true
+
+        sudo apt autoremove -y
+        sudo apt clean
+
+        echo "AFTER CLEAN"
+        df -h
 
     # ─────────────────────────────
     # INIT ROM
@@ -32,26 +62,33 @@ jobs:
         cd lineage
         repo init -u https://github.com/LineageOS/android.git -b lineage-22.0
 
+    # ─────────────────────────────
+    # SYNC (OPTIMIZADO)
+    # ─────────────────────────────
     - name: Sync source
       run: |
         cd lineage
-        repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags
+        repo sync -c -j2 --force-sync --no-clone-bundle --no-tags
 
     # ─────────────────────────────
-    # DEVICE TREE (TODO VIENE DE AQUÍ)
+    # DEVICE TREE
     # ─────────────────────────────
     - name: Clone device tree
       run: |
-        cd lineage/device/samsung
+        cd lineage
+        mkdir -p device/samsung
+        cd device/samsung
         git clone https://github.com/christiandroid20/android_device_samsung_a35x_roms a35x
 
     # ─────────────────────────────
-    # CCACHE
+    # CCACHE (CORREGIDO)
     # ─────────────────────────────
     - name: Enable ccache
       run: |
         export USE_CCACHE=1
-        ccache -M 50G
+        export CCACHE_DIR=~/.ccache
+        ccache -M 20G
+        ccache -o compression=true
 
     # ─────────────────────────────
     # BUILD
@@ -61,7 +98,7 @@ jobs:
         cd lineage
         source build/envsetup.sh
         lunch lineage_a35x-userdebug
-        mka bacon -j$(nproc --all)
+        mka bacon -j2
 
     # ─────────────────────────────
     # OUTPUT

@@ -43,7 +43,7 @@ jobs:
     - name: Clone device tree
       run: |
         cd lineage/device/samsung
-        git clone https://github.com/ExynosEnclave/android_device_samsung_a35x a35x
+        git clone https://github.com/christiandroid20/android_device_samsung_a35x_roms a35x
 
     # ─────────────────────────────
     # CCACHE

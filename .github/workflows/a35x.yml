@@ -87,15 +87,13 @@ jobs:
           mkdir -p $CCACHE_DIR
           ccache -M 20G
 
-- name: Build
-  run: |
-    cd $HOME/build/lineage
-    source build/envsetup.sh
-    lunch lineage_a35x-ap3a-userdebug
-
-    export USE_CCACHE=1
-
-    nice -n 10 ionice -c2 -n7 make otapackage -j$(nproc --all)
+      - name: Build
+        run: |
+          cd $HOME/build/lineage
+          source build/envsetup.sh
+          lunch lineage_a35x-ap3a-userdebug
+          export USE_CCACHE=1
+          nice -n 10 ionice -c2 -n7 make otapackage -j$(nproc --all)
 
       - name: Upload ROM
         uses: actions/upload-artifact@v4

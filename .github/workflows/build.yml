@@ -100,7 +100,7 @@ jobs:
 
         source build/envsetup.sh
 
-        lunch lineage_a35x-userdebug
+        lunch lineage_a35x-ap3a-userdebug
 
         echo "Validación OK"
 

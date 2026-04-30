@@ -87,15 +87,14 @@ jobs:
           mkdir -p $CCACHE_DIR
           ccache -M 20G
 
-- name: Build
-  run: |
-    cd $HOME/build/lineage
-    export USE_CCACHE=1
-    source build/envsetup.sh
-    lunch lineage_a35x-userdebug
-    nice -n 10 ionice -c2 -n7 \
-    mka bacon -j4
-    
+      - name: Build
+        run: |
+          cd $HOME/build/lineage
+          export USE_CCACHE=1
+          source build/envsetup.sh
+          lunch lineage_a35x-userdebug
+          nice -n 10 ionice -c2 -n7 mka bacon -j4
+
       - name: Upload ROM
         uses: actions/upload-artifact@v4
         with:

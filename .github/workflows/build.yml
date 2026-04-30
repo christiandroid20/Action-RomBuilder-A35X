@@ -1,4 +1,4 @@
-name: LineageOS A35x Build STABLE
+name: LineageOS A35x Build FINAL
 
 on:
   workflow_dispatch:
@@ -10,12 +10,11 @@ jobs:
     steps:
 
     # ─────────────────────────────
-    # ENTORNO SEGURO
+    # ENTORNO
     # ─────────────────────────────
     - name: Prepare environment
       run: |
         set -e
-        echo "Modo estable"
         ulimit -v $((14*1024*1024))
 
     # ─────────────────────────────
@@ -29,11 +28,10 @@ jobs:
         echo "$HOME/bin" >> $GITHUB_PATH
 
     # ─────────────────────────────
-    # INIT CONTROLADO
+    # INIT
     # ─────────────────────────────
     - name: Init repo
       run: |
-        set -e
         mkdir -p ~/build/lineage
         cd ~/build/lineage
 
@@ -42,11 +40,10 @@ jobs:
         fi
 
     # ─────────────────────────────
-    # SYNC SEGURO (SIN REDOWNLOAD)
+    # SYNC OPTIMIZADO
     # ─────────────────────────────
     - name: Sync source
       run: |
-        set -e
         cd ~/build/lineage
         repo sync -c -j2 --optimized-fetch --prune
 
@@ -55,7 +52,6 @@ jobs:
     # ─────────────────────────────
     - name: Device tree
       run: |
-        set -e
         cd ~/build/lineage
         mkdir -p device/samsung
 
@@ -68,53 +64,76 @@ jobs:
         fi
 
     # ─────────────────────────────
-    # CCACHE SEGURO 🔥
+    # DESCARGAR FIRMWARE (UNA VEZ)
     # ─────────────────────────────
-    - name: Setup ccache safely
+    - name: Firmware dump
+      run: |
+        cd ~/build
+        if [ ! -d "firmware-a35x" ]; then
+          git clone https://gitgud.io/Van-Firmware-Dumps/samsung/a35x firmware-a35x
+        fi
+
+    # ─────────────────────────────
+    # GENERAR VENDOR AUTOMÁTICO 🔥
+    # ─────────────────────────────
+    - name: Generate vendor
       run: |
         set -e
-        mkdir -p ~/.ccache
-        chmod -R 755 ~/.ccache
 
-        export USE_CCACHE=1
-        export CCACHE_DIR=~/.ccache
+        mkdir -p ~/build/lineage/vendor/samsung/a35x
 
-        # Validar integridad
-        ccache -s || true
+        cp -r ~/build/firmware-a35x/vendor/* ~/build/lineage/vendor/samsung/a35x/ || true
+        cp -r ~/build/firmware-a35x/system/vendor/* ~/build/lineage/vendor/samsung/a35x/ || true
 
-        # Reparar si hay corrupción
-        ccache -C || true
-
-        # Configuración estable
-        ccache -M 15G
-        ccache -o compression=true
-        ccache -o max_size=15G
+        # Crear archivo vendor.mk básico si no existe
+        if [ ! -f ~/build/lineage/vendor/samsung/a35x/a35x-vendor.mk ]; then
+          cat <<EOF > ~/build/lineage/vendor/samsung/a35x/a35x-vendor.mk
+PRODUCT_COPY_FILES += \\
+    \$(call find-copy-subdir-files,*,vendor/samsung/a35x,system)
+EOF
+        fi
 
     # ─────────────────────────────
-    # VALIDACIÓN RÁPIDA (CRÍTICA)
+    # PARCHE PARA GApps (ESPACIO)
+    # ─────────────────────────────
+    - name: Patch for GApps space
+      run: |
+        FILE=~/build/lineage/device/samsung/a35x/BoardConfig.mk
+
+        # Aumentar system a 7GB
+        grep -q BOARD_SYSTEMIMAGE_PARTITION_SIZE $FILE && \
+        sed -i 's/BOARD_SYSTEMIMAGE_PARTITION_SIZE.*/BOARD_SYSTEMIMAGE_PARTITION_SIZE := 7516192768/' $FILE || \
+        echo "BOARD_SYSTEMIMAGE_PARTITION_SIZE := 7516192768" >> $FILE
+
+    # ─────────────────────────────
+    # CCACHE
+    # ─────────────────────────────
+    - name: Setup ccache
+      run: |
+        mkdir -p ~/.ccache
+        export USE_CCACHE=1
+        export CCACHE_DIR=~/.ccache
+        ccache -M 15G
+        ccache -o compression=true
+
+    # ─────────────────────────────
+    # VALIDACIÓN
     # ─────────────────────────────
     - name: Quick validation
       run: |
-        set -e
         cd ~/build/lineage
-
         source build/envsetup.sh
-
         lunch lineage_a35x-ap3a-userdebug
 
-        echo "Validación OK"
-
     # ─────────────────────────────
-    # BUILD REAL
+    # BUILD
     # ─────────────────────────────
     - name: Build ROM
       run: |
-        set -e
         cd ~/build/lineage
         source build/envsetup.sh
-        lunch lineage_a35x-userdebug
+        lunch lineage_a35x-ap3a-userdebug
 
-        # equilibrio estabilidad/velocidad
         nice -n 10 ionice -c2 -n7 mka bacon -j2
 
     # ─────────────────────────────

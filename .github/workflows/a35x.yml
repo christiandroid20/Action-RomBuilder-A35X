@@ -68,12 +68,10 @@ jobs:
         run: |
           FILE=$HOME/build/lineage/vendor/samsung/a35x/BoardConfigVendor.mk
           if [ ! -f "$FILE" ]; then
-            cat <<EOF > $FILE
-TARGET_ARCH := arm64
-TARGET_ARCH_VARIANT := armv8-a
-TARGET_CPU_VARIANT := generic
-TARGET_USES_64_BIT_BINDER := true
-EOF
+            echo "TARGET_ARCH := arm64" > $FILE
+            echo "TARGET_ARCH_VARIANT := armv8-a" >> $FILE
+            echo "TARGET_CPU_VARIANT := generic" >> $FILE
+            echo "TARGET_USES_64_BIT_BINDER := true" >> $FILE
           fi
 
       - name: Patch system size

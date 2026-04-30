@@ -1,4 +1,4 @@
-name: LineageOS A35x Build TURBO
+name: LineageOS A35x Build STABLE
 
 on:
   workflow_dispatch:
@@ -10,17 +10,18 @@ jobs:
     steps:
 
     # ─────────────────────────────
-    # LIMITES INTELIGENTES
+    # ENTORNO SEGURO
     # ─────────────────────────────
-    - name: Limit system usage
+    - name: Prepare environment
       run: |
-        echo "Modo turbo controlado"
-        ulimit -v $((14*1024*1024))   # deja margen al sistema
+        set -e
+        echo "Modo estable"
+        ulimit -v $((14*1024*1024))
 
     # ─────────────────────────────
     # REPO TOOL
     # ─────────────────────────────
-    - name: Setup repo tool
+    - name: Setup repo
       run: |
         mkdir -p ~/bin
         curl -s https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
@@ -28,58 +29,92 @@ jobs:
         echo "$HOME/bin" >> $GITHUB_PATH
 
     # ─────────────────────────────
-    # INIT SOLO SI NO EXISTE
+    # INIT CONTROLADO
     # ─────────────────────────────
-    - name: Init LineageOS
+    - name: Init repo
       run: |
+        set -e
         mkdir -p ~/build/lineage
         cd ~/build/lineage
+
         if [ ! -d ".repo" ]; then
           repo init -u https://github.com/LineageOS/android.git -b lineage-22.0
         fi
 
     # ─────────────────────────────
-    # SYNC OPTIMIZADO 🔥
+    # SYNC SEGURO (SIN REDOWNLOAD)
     # ─────────────────────────────
     - name: Sync source
       run: |
+        set -e
         cd ~/build/lineage
-        repo sync -j2 --no-clone-bundle --no-tags
+        repo sync -c -j2 --optimized-fetch --prune
 
     # ─────────────────────────────
-    # DEVICE TREE (SMART)
+    # DEVICE TREE
     # ─────────────────────────────
     - name: Device tree
       run: |
+        set -e
         cd ~/build/lineage
         mkdir -p device/samsung
+
         if [ ! -d "device/samsung/a35x" ]; then
           git clone https://github.com/christiandroid20/android_device_samsung_a35x_roms device/samsung/a35x
         else
           cd device/samsung/a35x
+          git reset --hard
           git pull
         fi
 
     # ─────────────────────────────
-    # CCACHE AGRESIVO
+    # CCACHE SEGURO 🔥
     # ─────────────────────────────
-    - name: Setup ccache
+    - name: Setup ccache safely
       run: |
+        set -e
+        mkdir -p ~/.ccache
+        chmod -R 755 ~/.ccache
+
         export USE_CCACHE=1
         export CCACHE_DIR=~/.ccache
+
+        # Validar integridad
+        ccache -s || true
+
+        # Reparar si hay corrupción
+        ccache -C || true
+
+        # Configuración estable
         ccache -M 15G
         ccache -o compression=true
+        ccache -o max_size=15G
 
     # ─────────────────────────────
-    # BUILD (TURBO CONTROLADO)
+    # VALIDACIÓN RÁPIDA (CRÍTICA)
+    # ─────────────────────────────
+    - name: Quick validation
+      run: |
+        set -e
+        cd ~/build/lineage
+
+        source build/envsetup.sh
+
+        lunch lineage_a35x-userdebug
+
+        echo "Validación OK"
+
+    # ─────────────────────────────
+    # BUILD REAL
     # ─────────────────────────────
     - name: Build ROM
       run: |
+        set -e
         cd ~/build/lineage
         source build/envsetup.sh
         lunch lineage_a35x-userdebug
 
-        # 2 hilos = mejor balance en A8
+        # equilibrio estabilidad/velocidad
         nice -n 10 ionice -c2 -n7 mka bacon -j2
 
     # ─────────────────────────────

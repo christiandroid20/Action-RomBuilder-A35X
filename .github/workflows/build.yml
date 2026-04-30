@@ -8,139 +8,90 @@ jobs:
     runs-on: self-hosted
 
     steps:
+      - name: Prepare environment
+        run: |
+          set -e
+          ulimit -v $((14*1024*1024))
 
-    # ─────────────────────────────
-    # ENTORNO
-    # ─────────────────────────────
-    - name: Prepare environment
-      run: |
-        set -e
-        ulimit -v $((14*1024*1024))
+      - name: Setup repo
+        run: |
+          mkdir -p ~/bin
+          curl -s https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+          chmod +x ~/bin/repo
+          echo "$HOME/bin" >> $GITHUB_PATH
 
-    # ─────────────────────────────
-    # REPO TOOL
-    # ─────────────────────────────
-    - name: Setup repo
-      run: |
-        mkdir -p ~/bin
-        curl -s https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
-        chmod +x ~/bin/repo
-        echo "$HOME/bin" >> $GITHUB_PATH
+      - name: Init repo
+        run: |
+          mkdir -p ~/build/lineage
+          cd ~/build/lineage
+          if [ ! -d ".repo" ]; then
+            repo init -u https://github.com/LineageOS/android.git -b lineage-22.0
+          fi
 
-    # ─────────────────────────────
-    # INIT
-    # ─────────────────────────────
-    - name: Init repo
-      run: |
-        mkdir -p ~/build/lineage
-        cd ~/build/lineage
+      - name: Sync source
+        run: |
+          cd ~/build/lineage
+          repo sync -c -j2 --optimized-fetch --prune
 
-        if [ ! -d ".repo" ]; then
-          repo init -u https://github.com/LineageOS/android.git -b lineage-22.0
-        fi
+      - name: Device tree
+        run: |
+          cd ~/build/lineage
+          mkdir -p device/samsung
+          if [ ! -d "device/samsung/a35x" ]; then
+            git clone https://github.com/christiandroid20/android_device_samsung_a35x_roms device/samsung/a35x
+          else
+            cd device/samsung/a35x
+            git reset --hard
+            git pull
+          fi
 
-    # ─────────────────────────────
-    # SYNC OPTIMIZADO
-    # ─────────────────────────────
-    - name: Sync source
-      run: |
-        cd ~/build/lineage
-        repo sync -c -j2 --optimized-fetch --prune
+      - name: Firmware dump
+        run: |
+          cd ~/build
+          if [ ! -d "firmware-a35x" ]; then
+            git clone https://gitgud.io/Van-Firmware-Dumps/samsung/a35x firmware-a35x
+          fi
 
-    # ─────────────────────────────
-    # DEVICE TREE
-    # ─────────────────────────────
-    - name: Device tree
-      run: |
-        cd ~/build/lineage
-        mkdir -p device/samsung
+      - name: Generate vendor
+        run: |
+          mkdir -p ~/build/lineage/vendor/samsung/a35x
+          cp -r ~/build/firmware-a35x/vendor/* ~/build/lineage/vendor/samsung/a35x/ || true
+          cp -r ~/build/firmware-a35x/system/vendor/* ~/build/lineage/vendor/samsung/a35x/ || true
 
-        if [ ! -d "device/samsung/a35x" ]; then
-          git clone https://github.com/christiandroid20/android_device_samsung_a35x_roms device/samsung/a35x
-        else
-          cd device/samsung/a35x
-          git reset --hard
-          git pull
-        fi
+          if [ ! -f ~/build/lineage/vendor/samsung/a35x/a35x-vendor.mk ]; then
+            echo 'PRODUCT_COPY_FILES += $(call find-copy-subdir-files,*,vendor/samsung/a35x,system)' > ~/build/lineage/vendor/samsung/a35x/a35x-vendor.mk
+          fi
 
-    # ─────────────────────────────
-    # DESCARGAR FIRMWARE (UNA VEZ)
-    # ─────────────────────────────
-    - name: Firmware dump
-      run: |
-        cd ~/build
-        if [ ! -d "firmware-a35x" ]; then
-          git clone https://gitgud.io/Van-Firmware-Dumps/samsung/a35x firmware-a35x
-        fi
+      - name: Patch system size (GApps)
+        run: |
+          FILE=~/build/lineage/device/samsung/a35x/BoardConfig.mk
+          grep -q BOARD_SYSTEMIMAGE_PARTITION_SIZE $FILE && \
+          sed -i 's/BOARD_SYSTEMIMAGE_PARTITION_SIZE.*/BOARD_SYSTEMIMAGE_PARTITION_SIZE := 7516192768/' $FILE || \
+          echo "BOARD_SYSTEMIMAGE_PARTITION_SIZE := 7516192768" >> $FILE
 
-    # ─────────────────────────────
-    # GENERAR VENDOR AUTOMÁTICO 🔥
-    # ─────────────────────────────
-    - name: Generate vendor
-      run: |
-        set -e
+      - name: Setup ccache
+        run: |
+          mkdir -p ~/.ccache
+          export USE_CCACHE=1
+          export CCACHE_DIR=~/.ccache
+          ccache -M 15G
+          ccache -o compression=true
 
-        mkdir -p ~/build/lineage/vendor/samsung/a35x
+      - name: Quick validation
+        run: |
+          cd ~/build/lineage
+          source build/envsetup.sh
+          lunch lineage_a35x-ap3a-userdebug
 
-        cp -r ~/build/firmware-a35x/vendor/* ~/build/lineage/vendor/samsung/a35x/ || true
-        cp -r ~/build/firmware-a35x/system/vendor/* ~/build/lineage/vendor/samsung/a35x/ || true
+      - name: Build ROM
+        run: |
+          cd ~/build/lineage
+          source build/envsetup.sh
+          lunch lineage_a35x-ap3a-userdebug
+          nice -n 10 ionice -c2 -n7 mka bacon -j2
 
-        # Crear archivo vendor.mk básico si no existe
-        if [ ! -f ~/build/lineage/vendor/samsung/a35x/a35x-vendor.mk ]; then
-          cat <<EOF > ~/build/lineage/vendor/samsung/a35x/a35x-vendor.mk
-PRODUCT_COPY_FILES += \\
-    \$(call find-copy-subdir-files,*,vendor/samsung/a35x,system)
-EOF
-        fi
-
-    # ─────────────────────────────
-    # PARCHE PARA GApps (ESPACIO)
-    # ─────────────────────────────
-    - name: Patch for GApps space
-      run: |
-        FILE=~/build/lineage/device/samsung/a35x/BoardConfig.mk
-
-        # Aumentar system a 7GB
-        grep -q BOARD_SYSTEMIMAGE_PARTITION_SIZE $FILE && \
-        sed -i 's/BOARD_SYSTEMIMAGE_PARTITION_SIZE.*/BOARD_SYSTEMIMAGE_PARTITION_SIZE := 7516192768/' $FILE || \
-        echo "BOARD_SYSTEMIMAGE_PARTITION_SIZE := 7516192768" >> $FILE
-
-    # ─────────────────────────────
-    # CCACHE
-    # ─────────────────────────────
-    - name: Setup ccache
-      run: |
-        mkdir -p ~/.ccache
-        export USE_CCACHE=1
-        export CCACHE_DIR=~/.ccache
-        ccache -M 15G
-        ccache -o compression=true
-
-    # ─────────────────────────────
-    # VALIDACIÓN
-    # ─────────────────────────────
-    - name: Quick validation
-      run: |
-        cd ~/build/lineage
-        source build/envsetup.sh
-        lunch lineage_a35x-ap3a-userdebug
-
-    # ─────────────────────────────
-    # BUILD
-    # ─────────────────────────────
-    - name: Build ROM
-      run: |
-        cd ~/build/lineage
-        source build/envsetup.sh
-        lunch lineage_a35x-ap3a-userdebug
-
-        nice -n 10 ionice -c2 -n7 mka bacon -j2
-
-    # ─────────────────────────────
-    # OUTPUT
-    # ─────────────────────────────
-    - name: Upload ROM
-      uses: actions/upload-artifact@v4
-      with:
-        name: lineage-a35x
-        path: ~/build/lineage/out/target/product/a35x/
+      - name: Upload ROM
+        uses: actions/upload-artifact@v4
+        with:
+          name: lineage-a35x
+          path: ~/build/lineage/out/target/product/a35x/

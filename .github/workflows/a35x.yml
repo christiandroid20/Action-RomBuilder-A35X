@@ -39,12 +39,15 @@ jobs:
           cd $HOME/build/lineage
           repo sync -c -j$(nproc --all) --optimized-fetch --prune --no-tags
 
-      - name: Device tree
+      # 🔥 TU REPOSITORIO AQUI (FIX IMPORTANTE)
+      - name: Device tree (A35x ROM)
         run: |
           cd $HOME/build/lineage
+
           mkdir -p device/samsung
+
           if [ ! -d device/samsung/a35x ]; then
-            git clone https://github.com/christiandroid20/android_device_samsung_a35x_roms device/samsung/a35x
+            git clone --depth=1 https://github.com/christiandroid20/android_device_samsung_a35x_roms device/samsung/a35x
           else
             cd device/samsung/a35x
             git reset --hard

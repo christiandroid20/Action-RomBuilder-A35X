@@ -1,4 +1,4 @@
-name: LineageOS A35x Build SAFE
+name: LineageOS A35x Build TURBO
 
 on:
   workflow_dispatch:
@@ -8,15 +8,14 @@ jobs:
     runs-on: self-hosted
 
     steps:
-    
+
     # ─────────────────────────────
-    # LIMITAR RECURSOS 🔥
+    # LIMITES INTELIGENTES
     # ─────────────────────────────
     - name: Limit system usage
       run: |
-        echo "Configurando límites..."
-        ulimit -v $((12*1024*1024))
-        echo "Runner en modo bajo consumo"
+        echo "Modo turbo controlado"
+        ulimit -v $((14*1024*1024))   # deja margen al sistema
 
     # ─────────────────────────────
     # REPO TOOL
@@ -24,55 +23,64 @@ jobs:
     - name: Setup repo tool
       run: |
         mkdir -p ~/bin
-        curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+        curl -s https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
         chmod +x ~/bin/repo
         echo "$HOME/bin" >> $GITHUB_PATH
 
     # ─────────────────────────────
-    # INIT
+    # INIT SOLO SI NO EXISTE
     # ─────────────────────────────
     - name: Init LineageOS
       run: |
         mkdir -p ~/build/lineage
         cd ~/build/lineage
-        repo init -u https://github.com/LineageOS/android.git -b lineage-22.0
+        if [ ! -d ".repo" ]; then
+          repo init -u https://github.com/LineageOS/android.git -b lineage-22.0
+        fi
 
     # ─────────────────────────────
-    # SYNC
+    # SYNC OPTIMIZADO 🔥
     # ─────────────────────────────
     - name: Sync source
       run: |
         cd ~/build/lineage
-        repo sync -c -j1 --force-sync --no-clone-bundle --no-tags
+        repo sync -j2 --no-clone-bundle --no-tags
 
     # ─────────────────────────────
-    # DEVICE TREE
+    # DEVICE TREE (SMART)
     # ─────────────────────────────
-    - name: Clone device tree
+    - name: Device tree
       run: |
         cd ~/build/lineage
         mkdir -p device/samsung
-        git clone https://github.com/christiandroid20/android_device_samsung_a35x_roms device/samsung/a35x
+        if [ ! -d "device/samsung/a35x" ]; then
+          git clone https://github.com/christiandroid20/android_device_samsung_a35x_roms device/samsung/a35x
+        else
+          cd device/samsung/a35x
+          git pull
+        fi
 
     # ─────────────────────────────
-    # CCACHE
+    # CCACHE AGRESIVO
     # ─────────────────────────────
-    - name: Enable ccache
+    - name: Setup ccache
       run: |
         export USE_CCACHE=1
         export CCACHE_DIR=~/.ccache
-        ccache -M 10G
+        ccache -M 15G
         ccache -o compression=true
 
     # ─────────────────────────────
-    # BUILD
+    # BUILD (TURBO CONTROLADO)
     # ─────────────────────────────
     - name: Build ROM
       run: |
         cd ~/build/lineage
         source build/envsetup.sh
         lunch lineage_a35x-userdebug
-        nice -n 19 ionice -c2 -n7 mka bacon -j1
+
+        # 2 hilos = mejor balance en A8
+        nice -n 10 ionice -c2 -n7 mka bacon -j2
 
     # ─────────────────────────────
     # OUTPUT

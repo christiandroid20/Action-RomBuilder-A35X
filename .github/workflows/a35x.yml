@@ -1,14 +1,104 @@
-name: A35x Manual Build
+name: A35x LineageOS Build
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
+    name: Build on local runner
     runs-on: self-hosted
 
+    defaults:
+      run:
+        shell: bash
+
     steps:
-      - name: Test runner
+      - name: Check runner
         run: |
-          echo "Runner OK"
-          uname -a
+          echo "Runner activo"
+          nproc
+          free -h
+
+      - name: Setup repo tool
+        run: |
+          mkdir -p $HOME/bin
+          curl -s https://storage.googleapis.com/git-repo-downloads/repo > $HOME/bin/repo
+          chmod +x $HOME/bin/repo
+          echo "$HOME/bin" >> $GITHUB_PATH
+
+      - name: Init source
+        run: |
+          mkdir -p $HOME/build/lineage
+          cd $HOME/build/lineage
+          if [ ! -d ".repo" ]; then
+            repo init -u https://github.com/LineageOS/android.git -b lineage-22.0
+          fi
+
+      - name: Sync source
+        run: |
+          cd $HOME/build/lineage
+          repo sync -c -j$(nproc --all) --optimized-fetch --prune --no-tags
+
+      - name: Device tree
+        run: |
+          cd $HOME/build/lineage
+          mkdir -p device/samsung
+          if [ ! -d device/samsung/a35x ]; then
+            git clone https://github.com/christiandroid20/android_device_samsung_a35x_roms device/samsung/a35x
+          else
+            cd device/samsung/a35x
+            git reset --hard
+            git pull
+          fi
+
+      - name: Firmware
+        run: |
+          cd $HOME/build
+          if [ ! -d firmware-a35x ]; then
+            git clone https://gitgud.io/Van-Firmware-Dumps/samsung/a35x.git firmware-a35x
+          fi
+
+      - name: Generate vendor
+        run: |
+          mkdir -p $HOME/build/lineage/vendor/samsung/a35x
+          cp -r $HOME/build/firmware-a35x/vendor/* $HOME/build/lineage/vendor/samsung/a35x/ 2>/dev/null || true
+          cp -r $HOME/build/firmware-a35x/system/vendor/* $HOME/build/lineage/vendor/samsung/a35x/ 2>/dev/null || true
+
+      - name: Fix vendor config
+        run: |
+          FILE=$HOME/build/lineage/vendor/samsung/a35x/BoardConfigVendor.mk
+          if [ ! -f "$FILE" ]; then
+            cat <<EOF > $FILE
+TARGET_ARCH := arm64
+TARGET_ARCH_VARIANT := armv8-a
+TARGET_CPU_VARIANT := generic
+TARGET_USES_64_BIT_BINDER := true
+EOF
+          fi
+
+      - name: Patch system size
+        run: |
+          FILE=$HOME/build/lineage/device/samsung/a35x/BoardConfig.mk
+          grep -q BOARD_SYSTEMIMAGE_PARTITION_SIZE $FILE && \
+          sed -i 's/BOARD_SYSTEMIMAGE_PARTITION_SIZE.*/BOARD_SYSTEMIMAGE_PARTITION_SIZE := 7516192768/' $FILE || \
+          echo "BOARD_SYSTEMIMAGE_PARTITION_SIZE := 7516192768" >> $FILE
+
+      - name: Setup ccache
+        run: |
+          export USE_CCACHE=1
+          export CCACHE_DIR=$HOME/.ccache
+          mkdir -p $CCACHE_DIR
+          ccache -M 20G
+
+      - name: Build
+        run: |
+          cd $HOME/build/lineage
+          source build/envsetup.sh
+          lunch lineage_a35x-ap3a-userdebug
+          nice -n 10 ionice -c2 -n7 mka bacon -j$(nproc --all)
+
+      - name: Upload ROM
+        uses: actions/upload-artifact@v4
+        with:
+          name: lineage-a35x
+          path: $HOME/build/lineage/out/target/product/a35x/

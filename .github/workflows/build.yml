@@ -1,118 +1,109 @@
 name: LineageOS A35x Build SAFE
 
 on:
-workflow_dispatch:
+  workflow_dispatch:
 
 jobs:
-build:
-runs-on: self-hosted
+  build:
+    runs-on: self-hosted
 
-```
-steps:
-# ─────────────────────────────
-# DEPENDENCIAS (FIXED)
-# ─────────────────────────────
-- name: Install dependencies
-  run: |
-    sudo dpkg --add-architecture i386
-    sudo apt update
-    sudo apt install -y git-core repo bc bison build-essential curl flex \
-    g++-multilib gcc-multilib gnupg gperf imagemagick \
-    lib32readline-dev lib32z1-dev liblz4-tool libncurses-dev \
-    libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush \
-    rsync schedtool squashfs-tools xsltproc zip zlib1g-dev \
-    openjdk-17-jdk ccache
+    steps:
+    # ─────────────────────────────
+    # DEPENDENCIAS (FIXED)
+    # ─────────────────────────────
+    - name: Install dependencies
+      run: |
+        sudo dpkg --add-architecture i386
+        sudo apt update
+        sudo apt install -y git-core repo bc bison build-essential curl flex \
+        g++-multilib gcc-multilib gnupg gperf imagemagick \
+        lib32readline-dev lib32z1-dev liblz4-tool libncurses-dev \
+        libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush \
+        rsync schedtool squashfs-tools xsltproc zip zlib1g-dev \
+        openjdk-17-jdk ccache
+        sudo apt clean
 
-    sudo apt clean
+    # ─────────────────────────────
+    # LIMITAR RECURSOS 🔥
+    # ─────────────────────────────
+    - name: Limit system usage
+      run: |
+        echo "Configurando límites..."
+        ulimit -v $((12*1024*1024))
+        echo "Runner en modo bajo consumo"
 
-# ─────────────────────────────
-# LIMITAR RECURSOS 🔥
-# ─────────────────────────────
-- name: Limit system usage
-  run: |
-    echo "Configurando límites..."
+    # ─────────────────────────────
+    # REPO TOOL
+    # ─────────────────────────────
+    - name: Setup repo tool
+      run: |
+        mkdir -p ~/bin
+        curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+        chmod +x ~/bin/repo
+        echo "$HOME/bin" >> $GITHUB_PATH
 
-    # Limitar memoria virtual (12GB max)
-    ulimit -v $((12*1024*1024))
+    # ─────────────────────────────
+    # LIMPIEZA REAL
+    # ─────────────────────────────
+    - name: Clean space
+      run: |
+        rm -rf ~/.cache/*
+        rm -rf ~/.ccache/tmp/*
+        sudo apt autoremove -y
+        sudo apt clean
+        df -h
 
-    # Bajar prioridad CPU
-    echo "Runner en modo bajo consumo"
+    # ─────────────────────────────
+    # INIT
+    # ─────────────────────────────
+    - name: Init LineageOS
+      run: |
+        mkdir -p ~/build/lineage
+        cd ~/build/lineage
+        repo init -u https://github.com/LineageOS/android.git -b lineage-22.0
 
-# ─────────────────────────────
-# REPO TOOL
-# ─────────────────────────────
-- name: Setup repo tool
-  run: |
-    mkdir -p ~/bin
-    curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
-    chmod +x ~/bin/repo
-    echo "$HOME/bin" >> $GITHUB_PATH
+    # ─────────────────────────────
+    # SYNC
+    # ─────────────────────────────
+    - name: Sync source
+      run: |
+        cd ~/build/lineage
+        repo sync -c -j1 --force-sync --no-clone-bundle --no-tags
 
-# ─────────────────────────────
-# LIMPIEZA REAL
-# ─────────────────────────────
-- name: Clean space
-  run: |
-    rm -rf ~/.cache/*
-    rm -rf ~/.ccache/tmp/*
-    sudo apt autoremove -y
-    sudo apt clean
-    df -h
+    # ─────────────────────────────
+    # DEVICE TREE
+    # ─────────────────────────────
+    - name: Clone device tree
+      run: |
+        cd ~/build/lineage
+        mkdir -p device/samsung
+        git clone https://github.com/christiandroid20/android_device_samsung_a35x_roms device/samsung/a35x
 
-# ─────────────────────────────
-# INIT
-# ─────────────────────────────
-- name: Init LineageOS
-  run: |
-    mkdir -p ~/build/lineage
-    cd ~/build/lineage
-    repo init -u https://github.com/LineageOS/android.git -b lineage-22.0
+    # ─────────────────────────────
+    # CCACHE
+    # ─────────────────────────────
+    - name: Enable ccache
+      run: |
+        export USE_CCACHE=1
+        export CCACHE_DIR=~/.ccache
+        ccache -M 10G
+        ccache -o compression=true
 
-# ─────────────────────────────
-# SYNC (MUY LIMITADO)
-# ─────────────────────────────
-- name: Sync source
-  run: |
-    cd ~/build/lineage
-    repo sync -c -j1 --force-sync --no-clone-bundle --no-tags
+    # ─────────────────────────────
+    # BUILD
+    # ─────────────────────────────
+    - name: Build ROM
+      run: |
+        cd ~/build/lineage
+        source build/envsetup.sh
+        lunch lineage_a35x-userdebug
+        nice -n 19 ionice -c2 -n7 mka bacon -j1
 
-# ─────────────────────────────
-# DEVICE TREE
-# ─────────────────────────────
-- name: Clone device tree
-  run: |
-    cd ~/build/lineage
-    mkdir -p device/samsung
-    git clone https://github.com/christiandroid20/android_device_samsung_a35x_roms device/samsung/a35x
-
-# ─────────────────────────────
-# CCACHE CONTROLADO
-# ─────────────────────────────
-- name: Enable ccache
-  run: |
-    export USE_CCACHE=1
-    export CCACHE_DIR=~/.ccache
-    ccache -M 10G
-    ccache -o compression=true
-
-# ─────────────────────────────
-# BUILD CONTROLADO
-# ─────────────────────────────
-- name: Build ROM
-  run: |
-    cd ~/build/lineage
-    source build/envsetup.sh
-    lunch lineage_a35x-userdebug
-
-    # prioridad baja + 1 hilo = estabilidad
-    nice -n 19 ionice -c2 -n7 mka bacon -j1
-
-# ─────────────────────────────
-# OUTPUT
-# ─────────────────────────────
-- name: Upload ROM
-  uses: actions/upload-artifact@v4
-  with:
-    name: lineage-a35x
-    path: ~/build/lineage/out/target/product/a35x/
-```
+    # ─────────────────────────────
+    # OUTPUT
+    # ─────────────────────────────
+    - name: Upload ROM
+      uses: actions/upload-artifact@v4
+      with:
+        name: lineage-a35x
+        path: ~/build/lineage/out/target/product/a35x/

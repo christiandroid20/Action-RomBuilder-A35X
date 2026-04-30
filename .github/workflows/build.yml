@@ -29,17 +29,6 @@ jobs:
         echo "$HOME/bin" >> $GITHUB_PATH
 
     # ─────────────────────────────
-    # LIMPIEZA REAL
-    # ─────────────────────────────
-    - name: Clean space
-      run: |
-        rm -rf ~/.cache/*
-        rm -rf ~/.ccache/tmp/*
-        sudo apt autoremove -y
-        sudo apt clean
-        df -h
-
-    # ─────────────────────────────
     # INIT
     # ─────────────────────────────
     - name: Init LineageOS

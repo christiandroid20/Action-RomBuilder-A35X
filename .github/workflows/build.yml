@@ -50,6 +50,7 @@ jobs:
           cd ~/build
           if [ ! -d "firmware-a35x" ]; then
             git clone https://gitgud.io/Van-Firmware-Dumps/samsung/a35x.git
+          fi
 
       - name: Generate vendor
         run: |

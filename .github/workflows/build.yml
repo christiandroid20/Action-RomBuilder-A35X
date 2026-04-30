@@ -5,6 +5,7 @@ on:
 
 jobs:
   build:
+    name: Build on self-hosted runner
     runs-on: self-hosted
 
     steps:
@@ -13,7 +14,7 @@ jobs:
           set -e
           ulimit -v $((14*1024*1024))
 
-      - name: Setup repo
+      - name: Setup repo tool
         run: |
           mkdir -p ~/bin
           curl -s https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
@@ -28,12 +29,12 @@ jobs:
             repo init -u https://github.com/LineageOS/android.git -b lineage-22.0
           fi
 
-      - name: Sync source
+      - name: Sync source (lite)
         run: |
           cd ~/build/lineage
-          repo sync -c -j2 --optimized-fetch --prune
+          repo sync -c -j2 --optimized-fetch --prune --no-tags
 
-      - name: Device tree
+      - name: Clone device tree
         run: |
           cd ~/build/lineage
           mkdir -p device/samsung
@@ -45,14 +46,13 @@ jobs:
             git pull
           fi
 
-      - name: Firmware dump
+      - name: Clone firmware dump
         run: |
           cd ~/build
           if [ ! -d "firmware-a35x" ]; then
             git clone https://gitgud.io/Van-Firmware-Dumps/samsung/a35x.git firmware-a35x
           fi
 
-      # 🔥 GENERAR VENDOR
       - name: Generate vendor
         run: |
           mkdir -p ~/build/lineage/vendor/samsung/a35x
@@ -63,26 +63,20 @@ jobs:
             echo 'PRODUCT_COPY_FILES += $(call find-copy-subdir-files,*,vendor/samsung/a35x,system)' > ~/build/lineage/vendor/samsung/a35x/a35x-vendor.mk
           fi
 
-      # 🔧 FIX BOARDCONFIG
-      - name: Fix missing BoardConfigVendor
+      - name: Fix BoardConfigVendor
         run: |
           FILE=~/build/lineage/vendor/samsung/a35x/BoardConfigVendor.mk
-
           if [ ! -f "$FILE" ]; then
-            echo "Creando BoardConfigVendor.mk..."
-
             cat <<EOF > $FILE
 # Auto-generated vendor config
-
 TARGET_ARCH := arm64
 TARGET_ARCH_VARIANT := armv8-a
 TARGET_CPU_VARIANT := generic
-
 TARGET_USES_64_BIT_BINDER := true
 EOF
           fi
 
-      - name: Patch system size (GApps)
+      - name: Patch system size
         run: |
           FILE=~/build/lineage/device/samsung/a35x/BoardConfig.mk
           grep -q BOARD_SYSTEMIMAGE_PARTITION_SIZE $FILE && \
@@ -96,12 +90,6 @@ EOF
           export CCACHE_DIR=~/.ccache
           ccache -M 15G
           ccache -o compression=true
-
-      - name: Quick validation
-        run: |
-          cd ~/build/lineage
-          source build/envsetup.sh
-          lunch lineage_a35x-ap3a-userdebug
 
       - name: Build ROM
         run: |

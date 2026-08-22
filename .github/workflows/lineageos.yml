@@ -1,0 +1,125 @@
+name: Build LineageOS (a35x)
+
+# Builder de LineageOS para el a35x, con GApps horneadas DENTRO del zip
+# final (no flasheo aparte) y version de Android seleccionable --
+# agregar una version nueva es solo sumar un choice + una linea en el
+# mapeo de abajo, sin tocar el resto del workflow.
+
+on:
+  workflow_dispatch:
+    inputs:
+      android_version:
+        description: "Version de Android"
+        required: true
+        type: choice
+        options:
+          - "15"
+          - "16"
+        default: "15"
+      gapps:
+        description: "Variante"
+        required: true
+        type: choice
+        options:
+          - vanilla
+          - gapps
+        default: gapps
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: self-hosted
+    steps:
+      - name: Resolver rama de LineageOS para la version elegida
+        id: branch
+        run: |
+          case "${{ inputs.android_version }}" in
+            15) echo "lineage_branch=lineage-22.2" >> "$GITHUB_OUTPUT" ;;
+            16) echo "lineage_branch=lineage-23.2" >> "$GITHUB_OUTPUT" ;;
+            *) echo "No hay mapeo de rama para Android ${{ inputs.android_version }} todavia -- agregar un caso arriba" && exit 1 ;;
+          esac
+
+      - name: repo init (manifest de LineageOS)
+        run: |
+          mkdir -p ~/los-build && cd ~/los-build
+          repo init -u https://github.com/LineageOS/android.git -b ${{ steps.branch.outputs.lineage_branch }} --git-lfs --depth=1
+
+      - name: Traer device tree y vendor tree propios
+        run: |
+          cd ~/los-build
+          mkdir -p .repo/local_manifests
+          cat > .repo/local_manifests/roomservice.xml << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <manifest>
+            <project name="christiandroid20/android_device_samsung_a35x_roms" path="device/samsung/a35x" remote="github" revision="main" />
+            <project name="christiandroid20/vendor_samsung_a35x" path="vendor/samsung/a35x" remote="github" revision="main" />
+            <remote name="github" fetch="https://github.com/" />
+          </manifest>
+          EOF
+
+      - name: repo sync
+        run: |
+          cd ~/los-build
+          repo sync -c --no-clone-bundle --no-tags -j$(nproc)
+
+      - name: Lunch y build (target-files-package)
+        run: |
+          cd ~/los-build
+          source build/envsetup.sh
+          lunch lineage_a35x-userdebug
+          # target-files-package en vez de bacon directo -- necesario
+          # para poder inyectar GApps antes del empaquetado final si
+          # se pidio la variante "gapps"
+          mka target-files-package -j$(nproc)
+
+      - name: Descargar e inyectar MindTheGapps (solo si gapps=gapps)
+        if: ${{ inputs.gapps == 'gapps' }}
+        run: |
+          cd ~/los-build
+          GAPPS_REPO="MindTheGapps/${{ inputs.android_version }}.0.0-arm64"
+          echo "Buscando ultimo release de ${GAPPS_REPO}..."
+          DOWNLOAD_URL=$(curl -s "https://api.github.com/repos/${GAPPS_REPO}/releases/latest" | \
+            python3 -c "import json,sys; d=json.load(sys.stdin); print([a['browser_download_url'] for a in d['assets'] if a['name'].endswith('.zip')][0])")
+          echo "Descargando: ${DOWNLOAD_URL}"
+          curl -L -o /tmp/gapps.zip "${DOWNLOAD_URL}"
+          mkdir -p /tmp/gapps_extracted
+          unzip -q /tmp/gapps.zip -d /tmp/gapps_extracted
+
+          OUT_DIR="out/target/product/a35x"
+          TF_ZIP=$(ls ${OUT_DIR}/obj/PACKAGING/target_files_intermediates/*-target_files-*.zip | head -1)
+          TF_DIR="/tmp/target_files_extracted"
+          rm -rf "${TF_DIR}" && mkdir -p "${TF_DIR}"
+          unzip -q "${TF_ZIP}" -d "${TF_DIR}"
+
+          # El payload real de MindTheGapps vive bajo system/ dentro del
+          # zip flasheable -- se copia directo sobre SYSTEM/ del target-files
+          if [ -d "/tmp/gapps_extracted/system" ]; then
+            cp -a /tmp/gapps_extracted/system/. "${TF_DIR}/SYSTEM/"
+          else
+            echo "Aviso: el zip de MindTheGapps no trae carpeta system/ en la raiz -- revisar estructura manualmente"
+            find /tmp/gapps_extracted -maxdepth 2
+            exit 1
+          fi
+
+          echo "Re-empacando target-files con GApps incluidas..."
+          cd "${TF_DIR}"
+          zip -qr "${TF_ZIP}" .
+          cd ~/los-build
+
+      - name: Generar el zip final flasheable (img_from_target_files)
+        run: |
+          cd ~/los-build
+          source build/envsetup.sh
+          lunch lineage_a35x-userdebug
+          OUT_DIR="out/target/product/a35x"
+          TF_ZIP=$(ls ${OUT_DIR}/obj/PACKAGING/target_files_intermediates/*-target_files-*.zip | head -1)
+          img_from_target_files "${TF_ZIP}" "${OUT_DIR}/lineage-a35x-android${{ inputs.android_version }}-${{ inputs.gapps }}-$(date +%Y%m%d).zip"
+
+      - name: Subir el resultado como artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lineage-a35x-android${{ inputs.android_version }}-${{ inputs.gapps }}
+          path: ~/los-build/out/target/product/a35x/lineage-a35x-*.zip
+          retention-days: 14

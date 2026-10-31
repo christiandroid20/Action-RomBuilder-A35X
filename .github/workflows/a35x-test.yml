@@ -1,0 +1,189 @@
+name: A35X Test — Android 15 (safe baseline)
+
+on:
+  workflow_dispatch:
+    inputs:
+      android_version:
+        description: "Android source version (first validated test)"
+        required: true
+        type: choice
+        options:
+          - "15"
+        default: "15"
+      gapps:
+        description: "Google apps"
+        required: true
+        type: choice
+        options:
+          - "vanilla"
+        default: "vanilla"
+      filesystem:
+        description: "Filesystem"
+        required: true
+        type: choice
+        options:
+          - "ext4"
+        default: "ext4"
+      kernel:
+        description: "Kernel variant"
+        required: true
+        type: choice
+        options:
+          - "stock"
+        default: "stock"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: a35x-rom-test
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Validate A35X inputs before syncing Android source
+    runs-on: self-hosted
+    steps:
+      - name: Checkout builder
+        uses: actions/checkout@v4
+
+      - name: Check runner capacity
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "CPU threads: $(nproc)"
+          free -h
+          df -h "$RUNNER_TEMP"
+          python3 --version
+          git --version
+          if [[ "$(nproc)" -lt 8 ]]; then
+            echo "::error::The self-hosted runner needs at least 8 CPU threads for this build profile."
+            exit 1
+          fi
+          AVAILABLE_GB="$(df -BG "$RUNNER_TEMP" | awk 'NR==2 {gsub(/G/,"",$4); print $4}')"
+          if [[ "$AVAILABLE_GB" -lt 250 ]]; then
+            echo "::error::At least 250 GB free space is required before syncing Android source."
+            exit 1
+          fi
+
+      - name: Validate builder configuration
+        run: python3 scripts/validate-config.py
+
+      - name: Fetch device tree for a lightweight preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth=1 https://github.com/christiandroid20/android_device_samsung_a35x_roms.git "$RUNNER_TEMP/a35x-device-tree"
+
+      - name: Validate kernel, DTB/DTBO and security baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/preflight-a35x-test.sh "$RUNNER_TEMP/a35x-device-tree" "$RUNNER_TEMP/a35x-preflight-report.txt"
+
+      - name: Upload preflight report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a35x-preflight-report
+          path: ${{ runner.temp }}/a35x-preflight-report.txt
+          if-no-files-found: ignore
+          retention-days: 14
+
+  build:
+    name: Build LineageOS 22.2 — A35X
+    needs: preflight
+    runs-on: self-hosted
+    steps:
+      - name: Checkout builder
+        uses: actions/checkout@v4
+
+      - name: Install repo tool
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/bin"
+          curl -fsSL https://storage.googleapis.com/git-repo-downloads/repo -o "$HOME/bin/repo"
+          chmod +x "$HOME/bin/repo"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+
+      - name: Initialize LineageOS 22.2
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/los-a35x"
+          cd "$RUNNER_TEMP/los-a35x"
+          repo init -u https://github.com/LineageOS/android.git -b lineage-22.2 --git-lfs --depth=1
+          mkdir -p .repo/local_manifests
+          cat > .repo/local_manifests/roomservice.xml <<'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <manifest>
+            <remote name="github" fetch="https://github.com/" />
+            <project name="christiandroid20/android_device_samsung_a35x_roms" path="device/samsung/a35x" remote="github" revision="main" />
+            <project name="christiandroid20/vendor_samsung_a35x" path="vendor/samsung/a35x" remote="github" revision="main" />
+          </manifest>
+          EOF
+
+      - name: Sync Android source and A35X trees
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/los-a35x"
+          repo sync -c --no-clone-bundle --no-tags -j"$(nproc)"
+
+      - name: Enforce the requested security patch baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/los-a35x"
+          FILE="device/samsung/a35x/BoardConfig.mk"
+          grep -q '^VENDOR_SECURITY_PATCH := 2024-09-01$\|^VENDOR_SECURITY_PATCH := 2025-04-01$' "$FILE"
+          sed -i 's/^VENDOR_SECURITY_PATCH := .*/VENDOR_SECURITY_PATCH := 2025-04-01/' "$FILE"
+          grep -q '^VENDOR_SECURITY_PATCH := 2025-04-01$' "$FILE"
+          echo "Preserved requested test baseline: VENDOR_SECURITY_PATCH=2025-04-01"
+
+      - name: Build vanilla EXT4 ROM with stock kernel
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/los-a35x"
+          export USE_CCACHE=1
+          export CCACHE_DIR="$HOME/.ccache"
+          mkdir -p "$CCACHE_DIR"
+          ccache -M 40G || true
+          source build/envsetup.sh
+          lunch lineage_a35x-userdebug
+          mka bacon -j"$(nproc)"
+
+      - name: Generate checksums and build manifest
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="$RUNNER_TEMP/los-a35x/out/target/product/a35x"
+          cd "$OUT"
+          find . -maxdepth 1 -type f \( -name '*.zip' -o -name '*.img' \) -print0 | sort -z | xargs -0 -r sha256sum > SHA256SUMS.txt
+          cat > BUILD-MANIFEST.txt <<'EOF'
+          Device: Samsung Galaxy A35 SM-A356E (a35x)
+          Firmware baseline: A356EXXU4BYDC
+          Vendor security patch: 2025-04-01
+          Android: 15
+          LineageOS branch: lineage-22.2
+          GApps: vanilla (none)
+          Filesystem: EXT4
+          Kernel: stock firmware prebuilt
+          EOF
+
+      - name: Upload ROM and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a35x-android15-vanilla-ext4-stock
+          path: |
+            ${{ runner.temp }}/los-a35x/out/target/product/a35x/*.zip
+            ${{ runner.temp }}/los-a35x/out/target/product/a35x/*.img
+            ${{ runner.temp }}/los-a35x/out/target/product/a35x/SHA256SUMS.txt
+            ${{ runner.temp }}/los-a35x/out/target/product/a35x/BUILD-MANIFEST.txt
+            ${{ runner.temp }}/los-a35x/out/target/product/a35x/*.log
+          if-no-files-found: warn
+          retention-days: 14

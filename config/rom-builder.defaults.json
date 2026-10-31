@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "device": {
+    "manufacturer": "samsung",
+    "model": "SM-A356E",
+    "codename": "a35x",
+    "firmware_baseline": "A356EXXU4BYDC",
+    "preserve_vendor_security_patch": "2025-04-01"
+  },
+  "android": {
+    "version": "15",
+    "source_branch": "lineage-22.2",
+    "supported_versions": ["15", "16"],
+    "experimental_versions": ["17"]
+  },
+  "gapps": {
+    "mode": "gapps",
+    "provider": "MindTheGapps",
+    "install_method": "supported_package",
+    "required": false
+  },
+  "kernel": {
+    "mode": "both",
+    "stock": {
+      "source": "selected_firmware",
+      "require_matching_vendor_modules": true
+    },
+    "source": {
+      "repository": "",
+      "revision": "",
+      "defconfig": "",
+      "enabled": false
+    }
+  },
+  "filesystem": {
+    "mode": "ext4",
+    "allowed": ["ext4", "erofs"],
+    "erofs_verified": false,
+    "require_device_tree_support": true
+  },
+  "biometrics": {
+    "mode": "both",
+    "stock_path": "preserve_original_vendor_hal_tee_keymint",
+    "aosp_compat_path": "experimental_separate_build_variant",
+    "runtime_fallback": false,
+    "require_enrollment_unlock_app_auth_tests": true
+  },
+  "galaxy_experience": {
+    "mode": "selective",
+    "modules": {
+      "game_launcher": false,
+      "game_booster": false,
+      "galaxy_avatar_ar": false,
+      "samsung_camera": false,
+      "samsung_keyboard": false,
+      "galaxy_services": false
+    },
+    "proprietary_payload_policy": "extract_from_user_firmware",
+    "fail_open": true
+  },
+  "build": {
+    "clean_workspace": true,
+    "preflight_required": true,
+    "allow_unverified_android_branch": false,
+    "allow_unverified_firmware_binary": false,
+    "allow_unsupported_filesystem": false,
+    "allow_unverified_kernel": false
+  }
+}

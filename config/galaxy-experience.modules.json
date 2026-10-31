@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "device": "a35x",
+  "policy": {
+    "default_enabled": false,
+    "proprietary_binaries": "extract_from_user_firmware_only",
+    "no_system_app_should_be_required_for_boot": true,
+    "missing_dependency_action": "skip_module_and_report",
+    "preserve_vendor_security_components": true
+  },
+  "modules": [
+    {
+      "id": "game_launcher",
+      "label": "Galaxy Game Launcher",
+      "group": "gaming",
+      "status": "needs_porting_and_runtime_validation",
+      "dependencies": ["matching_samsung_framework_components"],
+      "requires": ["package_manager", "game_mode_integration"],
+      "conflicts": [],
+      "optional": true
+    },
+    {
+      "id": "game_booster",
+      "label": "Galaxy Game Booster",
+      "group": "gaming",
+      "status": "needs_porting_and_runtime_validation",
+      "dependencies": ["game_launcher", "supported_samsung_services"],
+      "requires": ["performance_service", "supported_kernel_controls"],
+      "conflicts": [],
+      "optional": true
+    },
+    {
+      "id": "galaxy_avatar_ar",
+      "label": "Galaxy Avatar / AR Zone",
+      "group": "ar_camera",
+      "status": "needs_camera_stack_validation",
+      "dependencies": ["camera_provider", "vendor_camera_libraries", "supported_ar_runtime"],
+      "requires": ["camera", "gpu"],
+      "conflicts": [],
+      "optional": true
+    },
+    {
+      "id": "samsung_camera",
+      "label": "Samsung Camera",
+      "group": "camera",
+      "status": "needs_camera_stack_validation",
+      "dependencies": ["vendor_camera_libraries", "camera_provider"],
+      "requires": ["camera"],
+      "conflicts": [],
+      "optional": true
+    },
+    {
+      "id": "samsung_keyboard",
+      "label": "Samsung Keyboard",
+      "group": "input",
+      "status": "optional_apk_validation",
+      "dependencies": [],
+      "requires": ["input_method_framework"],
+      "conflicts": [],
+      "optional": true
+    },
+    {
+      "id": "galaxy_services",
+      "label": "Galaxy Services",
+      "group": "services",
+      "status": "dependency_audit_required",
+      "dependencies": ["per_module_samsung_framework_components"],
+      "requires": [],
+      "conflicts": [],
+      "optional": true
+    }
+  ]
+}

@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "device": "a35x",
+  "module": "Galaxy Ecosystem Bridge",
+  "principles": {
+    "standard_protocols_first": true,
+    "vendor_adapters_optional": true,
+    "no_permanent_background_scan_by_default": true,
+    "no_fabricated_battery_values": true,
+    "user_consent_required_for_pairing_and_data_access": true,
+    "fail_open": true
+  },
+  "providers": [
+    {
+      "id": "android_bluetooth_core",
+      "category": "connectivity",
+      "status": "platform_baseline",
+      "features": ["pairing", "profiles", "audio_routing", "device_metadata"]
+    },
+    {
+      "id": "bluetooth_battery_service",
+      "category": "headphones",
+      "status": "standard_protocol",
+      "features": ["reported_battery_level"],
+      "limitations": ["many_devices_report_only_one_aggregate_level"]
+    },
+    {
+      "id": "fast_pair",
+      "category": "headphones",
+      "status": "optional_gms_or_certified_provider_integration",
+      "features": ["discovery", "pairing_assistance", "left_right_case_battery_when_advertised", "accessory_metadata"],
+      "limitations": ["component_battery_requires_accessory_protocol_support", "full_find_hub_features_require_supported_accessory_and_service"]
+    },
+    {
+      "id": "manufacturer_ble_adapters",
+      "category": "headphones",
+      "status": "per_model_reverse_engineering_or_vendor_sdk_validation",
+      "features": ["left_right_case_battery_when_exposed", "device_specific_controls"],
+      "limitations": ["proprietary_protocols_vary_by_model_and_firmware"]
+    },
+    {
+      "id": "galaxy_buds_adapter",
+      "category": "samsung_audio",
+      "status": "requires_galaxy_wearable_plugin_and_firmware_validation",
+      "features": ["supported_battery_readouts", "supported_touch_and_sound_controls", "supported_firmware_update_flow"],
+      "limitations": ["do_not_assume_all_buds_generations_share_one_protocol"]
+    },
+    {
+      "id": "galaxy_wearable_watch_adapter",
+      "category": "samsung_wearables",
+      "status": "requires_galaxy_wearable_and_model_plugin_validation",
+      "features": ["pairing_assistance", "notifications", "supported_sync_and_settings"],
+      "limitations": ["some_features_require_gms_or_samsung_account_or_one_ui", "legacy_tizen_and_wear_os_are_distinct"]
+    },
+    {
+      "id": "wear_os_companion",
+      "category": "wearables",
+      "status": "optional_companion_integration",
+      "features": ["wear_os_pairing_and_companion_support"],
+      "limitations": ["model_and_gms_requirements_apply"]
+    }
+  ],
+  "battery_model": {
+    "components": ["left", "right", "case", "headband_or_device", "aggregate"],
+    "values": {
+      "percentage_range": [0, 100],
+      "unknown": null
+    },
+    "charging_state": ["charging", "not_charging", "full", "unknown"],
+    "rule": "Expose only values actually reported by the accessory or a verified adapter. Never infer case or per-earbud percentages from a single aggregate value."
+  },
+  "device_classes": [
+    "galaxy_watch",
+    "wear_os_watch",
+    "tizen_watch",
+    "galaxy_buds",
+    "true_wireless_earbuds",
+    "bluetooth_headphones",
+    "bluetooth_headset",
+    "hearing_device",
+    "speaker",
+    "other_bluetooth_accessory"
+  ]
+}

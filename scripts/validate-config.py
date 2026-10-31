@@ -32,12 +32,16 @@ def main() -> None:
         fail("gapps.mode must be none or gapps.")
 
     kernel = cfg.get("kernel", {})
-    if kernel.get("mode") not in {"stock", "source", "both"}:
+    mode = kernel.get("mode")
+    if mode not in {"stock", "source", "both"}:
         fail("kernel.mode must be stock, source or both.")
-    if kernel["mode"] in {"source", "both"}:
-        source = kernel.get("source", {})
+    source = kernel.get("source", {})
+    source_variant_enabled = bool(source.get("enabled", False))
+    if mode == "source" or (mode == "both" and source_variant_enabled):
         if not all(source.get(k) for k in ("repository", "revision", "defconfig")):
-            fail("Source-kernel mode requires repository, immutable revision and defconfig.")
+            fail("An enabled source-kernel variant requires repository, immutable revision and defconfig.")
+    if mode == "both" and not source_variant_enabled:
+        print("NOTICE: stock-kernel variant is selected for this run; source-kernel variant remains gated.")
 
     fs = cfg.get("filesystem", {})
     if fs.get("mode") not in fs.get("allowed", []):
@@ -64,8 +68,8 @@ def main() -> None:
         fail("Preflight cannot be disabled for this project.")
 
     print("A35X ROM Builder configuration: valid.")
-    print(f"Device: a35x | Android: {version} | GApps: {gapps['mode']}")
-    print(f"Kernel: {kernel['mode']} | Filesystem: {fs['mode']} | Biometrics: both")
+    print(f"Device: a35x | Android: {version} | GApps default: {gapps['mode']} (optional)")
+    print(f"Kernel strategy: {mode} | Filesystem default: {fs['mode']} | Biometrics: isolated stock/AOSP variants")
     print("Galaxy Experience: selective (module availability is checked separately).")
 
 if __name__ == "__main__":

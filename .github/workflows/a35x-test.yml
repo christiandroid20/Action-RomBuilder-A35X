@@ -1,6 +1,15 @@
 name: A35X Test — Android 15 (safe baseline)
 
 on:
+  push:
+    branches:
+      - feature/galaxy-aosp-experience-foundation
+    paths:
+      - ".github/workflows/a35x-test.yml"
+      - "scripts/preflight-a35x-test.sh"
+      - "scripts/validate-config.py"
+      - "config/**"
+      - "docs/TEST-PLAN.md"
   workflow_dispatch:
     inputs:
       android_version:
